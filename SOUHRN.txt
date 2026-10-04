@@ -1,0 +1,21 @@
+SOUHRN ODEVZDANI
+
+1. SPLNĚNO – Základní transformace: posun, změna měřítka a rotace kolem osy Z jsou implementovány ve vertex shaderu pomocí rovnic ze cvičení.
+
+2. SPLNĚNO – ShaderProgram obsahuje přetížené setUniform() pro int, float a 2/3/4 hodnoty a kontroluje existenci uniformní proměnné.
+
+3. SPLNĚNO – Třída Scene uchovává objekty scény a scény se přepínají klávesami 1–4.
+
+4. SPLNĚNO – Testovací scény: trojúhelník, kulička, les a vlastní 3D logo VYL0034.
+
+5. SPLNĚNO – Les obsahuje 16 stromů, 16 keřů, slunce a vlastní logo. Stromy jsou zjednodušené na kmen a dvě části koruny.
+
+6. SPLNĚNO – main provádí inicializaci, vytvoření shaderů, modelů a scén a následně spouští hlavní smyčku.
+
+7. SPLNĚNO – Vlastní 3D logo odpovídá přiloženému Blender souboru: VYL0034, Arial, extruze 0.15, bevel 0.01. Model je uložen v models/vyl0034_logo.h.
+
+8. SPLNĚNO – Objektový návrh obsahuje Application, Scene, SceneObject, Model a ShaderProgram; diagram je přiložen jako class_diagram.png.
+
+POZNÁMKA K SCREENSHOTŮM
+
+Zadání vyžaduje skutečné screenshoty běžící aplikace pojmenované login_1.png až login_8.png. Tyto screenshoty nejsou v tomto balíčku, protože aplikaci nelze v tomto prostředí spustit v prostředí Visual Studia/OpenGL na Windows. Před odevzdáním je nutné je vytvořit na počítači a vložit do kořenové složky projektu.

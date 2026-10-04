@@ -1,0 +1,15 @@
+digraph G {
+  graph [rankdir=LR, bgcolor="white", pad="0.2"];
+  node [shape=record, fontname="Arial", fontsize=11];
+  Application [label="{Application|window\nbasicProgram\nredProgram\nmodels\nscenes\nactiveScene|initialization()\ncreateShaders()\ncreateModels()\ncreateScenes()\nrun()}"];
+  Scene [label="{Scene|name\nobjects|add()\ndraw()\ngetName()}"];
+  SceneObject [label="{SceneObject|model\nprogram\nx,y,z\nscale\nrotation|}"];
+  Model [label="{Model|vao\nvbo\nvertexCount|draw()}"];
+  ShaderProgram [label="{ShaderProgram|id|use()\nsetUniform()\nsetTransform()}"];
+  Application -> Scene [label="1..*"];
+  Scene -> SceneObject [label="1..*"];
+  SceneObject -> Model [label="1"];
+  SceneObject -> ShaderProgram [label="1"];
+  Application -> Model [label="*"];
+  Application -> ShaderProgram [label="2"];
+}
