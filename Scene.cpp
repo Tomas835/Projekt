@@ -2,21 +2,16 @@
 
 Scene::Scene(const std::string& name) : name(name) {}
 
-void Scene::add(Model* model, ShaderProgram* program,
-                float x, float y, float z, float scale, float rotation)
+DrawableObject& Scene::add(Model* model, ShaderProgram* program, TransformPtr transform)
 {
-    objects.push_back({ model, program, x, y, z, scale, rotation });
+    objects.emplace_back(model, program, std::move(transform));
+    return objects.back();
 }
 
-void Scene::draw() const
+void Scene::draw(float time) const
 {
-    for (const SceneObject& object : objects)
-    {
-        object.program->use();
-        object.program->setTransform(object.x, object.y, object.z,
-                                     object.scale, object.rotation);
-        object.model->draw();
-    }
+    for (const DrawableObject& object : objects)
+        object.draw(time);
 }
 
 const std::string& Scene::getName() const

@@ -3,6 +3,7 @@
 #include <iostream>
 #include <sstream>
 #include <cstdlib>
+#include <glm/gtc/type_ptr.hpp>
 
 GLuint ShaderProgram::compile(GLenum type, const char* file)
 {
@@ -118,9 +119,10 @@ bool ShaderProgram::setUniform(const char* name, float x, float y, float z, floa
     return true;
 }
 
-void ShaderProgram::setTransform(float x, float y, float z, float scale, float rotation) const
+bool ShaderProgram::setUniform(const char* name, const glm::mat4& matrix) const
 {
-    setUniform("offset", x, y, z);
-    setUniform("scale", scale);
-    setUniform("rotation", rotation);
+    GLint location = uniformLocation(name);
+    if (location == -1) return false;
+    glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(matrix));
+    return true;
 }
