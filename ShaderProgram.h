@@ -2,6 +2,7 @@
 #include <glad/gl.h>
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
+#include <glm/glm.hpp>
 
 class ShaderProgram
 {
@@ -17,7 +18,7 @@ public:
     bool setUniform(const char* name, float x, float y, float z) const;
     bool setUniform(const char* name, float x, float y, float z, float w) const;
 
-    void setTransform(float x, float y, float z, float scale, float rotation) const;
+    bool setUniform(const char* name, const glm::mat4& matrix) const;
 
 private:
     GLuint compile(GLenum type, const char* file);
