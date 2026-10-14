@@ -4,6 +4,8 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 
+class Camera; // dopredna deklarace (z duvodu krizoveho odkazu)
+
 class ShaderProgram
 {
 public:
@@ -19,6 +21,9 @@ public:
     bool setUniform(const char* name, float x, float y, float z, float w) const;
 
     bool setUniform(const char* name, const glm::mat4& matrix) const;
+
+    // Observer: zavola kamera pri zmene, program si aktualizuje view a projection matici.
+    void onCameraChanged(const Camera& camera) const;
 
 private:
     GLuint compile(GLenum type, const char* file);

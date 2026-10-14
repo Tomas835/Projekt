@@ -1,4 +1,5 @@
 #pragma once
+#include "Camera.h"
 #include "Model.h"
 #include "Scene.h"
 #include "ShaderProgram.h"
@@ -17,6 +18,10 @@ public:
     void createScenes();
     void run();
 
+    // volaji callbacky GLFW (mys, zmena velikosti okna)
+    void onCursorMoved(double x, double y);
+    void onFramebufferResized(int width, int height);
+
 private:
     void processInput();
     void setScene(int index);
@@ -32,4 +37,10 @@ private:
 
     CompositePtr triangleTransform;
     bool translateFirst;
+
+    Camera camera;
+    bool firstMouse;
+    double lastCursorX;
+    double lastCursorY;
+    double lastFrameTime;
 };

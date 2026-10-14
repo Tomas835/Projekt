@@ -1,4 +1,5 @@
 #include "ShaderProgram.h"
+#include "Camera.h"
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -125,4 +126,11 @@ bool ShaderProgram::setUniform(const char* name, const glm::mat4& matrix) const
     if (location == -1) return false;
     glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(matrix));
     return true;
+}
+
+void ShaderProgram::onCameraChanged(const Camera& camera) const
+{
+    use(); // uniformy se nastavuji aktivnimu programu
+    setUniform("viewMatrix", camera.getViewMatrix());
+    setUniform("projectionMatrix", camera.getProjectionMatrix());
 }

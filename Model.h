@@ -6,7 +6,7 @@
 class Model
 {
 public:
-	Model(const float* data, int floatCount, int floatsPerVertex = 6);
+	Model(const float* data, int floatCount, int floatsPerVertex = 6, int colorOffset = 3);
 	void draw() const;
 
 private:

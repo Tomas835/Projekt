@@ -1,4 +1,5 @@
 #include "Application.h"
+#include "models/clock.h"
 #include "models/earth.h"
 #include "models/moon.h"
 #include "models/sphere.h"
@@ -82,9 +83,26 @@ namespace
     }
 }
 
+namespace
+{
+    constexpr float MOUSE_SENSITIVITY = 0.0025f; // radianu na pixel
+    constexpr float MOVE_SPEED = 1.5f;           // jednotek za sekundu
+
+    void cursorPosCallback(GLFWwindow* window, double x, double y)
+    {
+        static_cast<Application*>(glfwGetWindowUserPointer(window))->onCursorMoved(x, y);
+    }
+
+    void framebufferSizeCallback(GLFWwindow* window, int width, int height)
+    {
+        static_cast<Application*>(glfwGetWindowUserPointer(window))->onFramebufferResized(width, height);
+    }
+}
+
 Application::Application(bool b)
     : broken(b), window(nullptr), basicProgram(nullptr), redProgram(nullptr), activeScene(0),
-    triangleTransform(nullptr), translateFirst(true) {}
+    triangleTransform(nullptr), translateFirst(true),
+    firstMouse(true), lastCursorX(0.0), lastCursorY(0.0), lastFrameTime(0.0) {}
 
 Application::~Application()
 {
@@ -124,6 +142,41 @@ void Application::initialization()
     std::printf("GLSL: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
 
     glEnable(GL_DEPTH_TEST);
+
+    // Mys (rozhlizeni kamery) a zmena velikosti okna (pomer stran projekce).
+    glfwSetWindowUserPointer(window, this);
+    glfwSetCursorPosCallback(window, cursorPosCallback);
+    glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+
+    int width = 0, height = 0;
+    glfwGetFramebufferSize(window, &width, &height);
+    onFramebufferResized(width, height);
+}
+
+void Application::onCursorMoved(double x, double y)
+{
+    if (firstMouse)
+    {
+        lastCursorX = x;
+        lastCursorY = y;
+        firstMouse = false;
+        return;
+    }
+
+    const float dx = static_cast<float>(x - lastCursorX);
+    const float dy = static_cast<float>(y - lastCursorY);
+    lastCursorX = x;
+    lastCursorY = y;
+
+    camera.rotate(dx * MOUSE_SENSITIVITY, dy * MOUSE_SENSITIVITY);
+}
+
+void Application::onFramebufferResized(int width, int height)
+{
+    if (width <= 0 || height <= 0) return; // minimalizovane okno
+    glViewport(0, 0, width, height);
+    camera.setAspect(static_cast<float>(width) / static_cast<float>(height));
 }
 
 void Application::createShaders()
@@ -132,6 +185,10 @@ void Application::createShaders()
 
     const char* redFrag = broken ? "shaders/broken.frag" : "shaders/red.frag";
     redProgram = new ShaderProgram("shaders/basic.vert", redFrag);
+
+    // Kamera posila view a projection matici obema shader programum.
+    camera.attach(basicProgram);
+    camera.attach(redProgram);
 }
 
 namespace
@@ -139,7 +196,7 @@ namespace
     enum ModelId
     {
         TRIANGLE, SPHERE, TREE, BUSH, SIGNATURE,
-        SUN_BALL, EARTH, MOON
+        SUN_BALL, EARTH, MOON, CLOCK
     };
 }
 
@@ -153,6 +210,7 @@ void Application::createModels()
     models.push_back(new Model(sun, sizeof(sun) / sizeof(float), 9)); // SUN
     models.push_back(new Model(earth, sizeof(earth) / sizeof(float), 9)); // EARTH
     models.push_back(new Model(moon, sizeof(moon) / sizeof(float), 9)); // MOON
+    models.push_back(new Model(clockModel, sizeof(clockModel) / sizeof(float), 9, 6)); // CLOCK (pozice, normala, barva)
 }
 
 void Application::createScenes()
@@ -202,7 +260,6 @@ void Application::createScenes()
 
     forest->add(models[SUN_BALL], basicProgram, makeComposite({
         std::make_shared<Translate>(glm::vec3(0.72f, 0.72f, 0.6f)),
-        std::make_shared<Scale>(glm::vec3(0.7f, 1.0f, 1.0f)),
         std::make_shared<DynamicRotate>(axisY, 0.4f),
         std::make_shared<DynamicScale>([](float t) {
             return glm::vec3(0.16f * (1.0f + 0.1f * std::sin(2.0f * t)));
@@ -218,16 +275,12 @@ void Application::createScenes()
 
 
     Scene* solar = new Scene("Slunecni soustava");
-    const TransformPtr aspect = std::make_shared<Scale>(glm::vec3(0.7f, 1.0f, 1.0f));
-
     solar->add(models[SUN_BALL], basicProgram, makeComposite({
-        aspect,
         std::make_shared<DynamicRotate>(axisY, 0.4f),
         std::make_shared<Scale>(0.25f)
         }));
 
     CompositePtr earthOrbit = makeComposite({
-        aspect,
         std::make_shared<DynamicRotate>(axisZ, 0.5f),
         std::make_shared<Translate>(glm::vec3(0.72f, 0.0f, 0.0f))
         });
@@ -245,6 +298,11 @@ void Application::createScenes()
         }));
     solar->add(models[SIGNATURE], basicProgram, place(0.68f, -0.88f, -0.95f, 0.14f));
     scenes.push_back(solar);
+
+    Scene* clockScene = new Scene("Hodiny");
+    clockScene->add(models[CLOCK], basicProgram, place(0, 0, 0, 0.9f));
+    clockScene->add(models[SIGNATURE], basicProgram, place(0.68f, -0.88f, -0.95f, 0.14f));
+    scenes.push_back(clockScene);
 }
 
 void Application::updateTitle()
@@ -281,6 +339,17 @@ void Application::processInput()
         previous[i] = pressed;
     }
 
+    // Pohyb kamery: W/S dopredu/dozadu, A/D do stran.
+    const double now = glfwGetTime();
+    const float step = MOVE_SPEED * static_cast<float>(now - lastFrameTime);
+    lastFrameTime = now;
+    float forward = 0.0f, right = 0.0f;
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) forward += step;
+    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) forward -= step;
+    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) right += step;
+    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) right -= step;
+    if (forward != 0.0f || right != 0.0f) camera.move(forward, right);
+
     static bool spacePrevious = false;
     bool space = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
     if (space && !spacePrevious && triangleTransform)
@@ -297,6 +366,7 @@ void Application::processInput()
 void Application::run()
 {
     if (!scenes.empty()) updateTitle();
+    lastFrameTime = glfwGetTime();
 
     while (!glfwWindowShouldClose(window))
     {

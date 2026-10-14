@@ -17,4 +17,3 @@ private:
     ShaderProgram* program;
     TransformPtr transform;
 };
-#pragma once
