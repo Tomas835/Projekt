@@ -62,7 +62,7 @@
     <ClInclude Include="earth.h">
       <Filter>Hlavičkové soubory</Filter>
     </ClInclude>
-    <ClInclude Include="DrawableObject..h">
+    <ClInclude Include="DrawableObject.h">
       <Filter>Hlavičkové soubory</Filter>
     </ClInclude>
     <ClInclude Include="Transform.h">

@@ -101,7 +101,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Application.h" />
-    <ClInclude Include="DrawableObject..h" />
+    <ClInclude Include="DrawableObject.h" />
     <ClInclude Include="earth.h" />
     <ClInclude Include="Model.h" />
     <ClInclude Include="moon.h" />
