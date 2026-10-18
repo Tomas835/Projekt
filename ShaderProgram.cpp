@@ -130,7 +130,7 @@ bool ShaderProgram::setUniform(const char* name, const glm::mat4& matrix) const
 
 void ShaderProgram::onCameraChanged(const Camera& camera) const
 {
-    use(); // uniformy se nastavuji aktivnimu programu
+    use(); 
     setUniform("viewMatrix", camera.getViewMatrix());
     setUniform("projectionMatrix", camera.getProjectionMatrix());
 }

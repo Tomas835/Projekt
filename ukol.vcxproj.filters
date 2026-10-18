@@ -83,6 +83,9 @@
     <ClInclude Include="clock.h">
       <Filter>Hlavičkové soubory</Filter>
     </ClInclude>
+    <ClInclude Include="ProceduralModels.h">
+      <Filter>Hlavičkové soubory</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="shaders\basic.vert">
@@ -95,6 +98,9 @@
       <Filter>Shadery</Filter>
     </None>
     <None Include="shaders\broken.frag">
+      <Filter>Shadery</Filter>
+    </None>
+    <None Include="clock.vert">
       <Filter>Shadery</Filter>
     </None>
   </ItemGroup>

@@ -5,10 +5,13 @@
 #include "models/sphere.h"
 #include "models/sun.h"
 #include "models/vyl0034_logo.h"
+#include "ProceduralModels.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <chrono>
 #include <cstdlib>
+#include <ctime>
 #include <iostream>
 #include <random>
 #include <vector>
@@ -43,31 +46,6 @@ namespace
         return makeModel(d);
     }
 
-    Model* createTreeModel()
-    {
-        std::vector<float> d;
-        const float w = 0.12f;
-        addTriangle(d, -w, -0.75f, 0.0f, w, -0.75f, 0.0f, w, 0.0f, 0.0f,
-            0.48f, 0.25f, 0.08f);
-        addTriangle(d, -w, -0.75f, 0.0f, w, 0.0f, 0.0f, -w, 0.0f, 0.0f,
-            0.48f, 0.25f, 0.08f);
-        addTriangle(d, 0.0f, 0.72f, 0.0f, -0.52f, -0.08f, 0.0f, 0.52f, -0.08f, 0.0f,
-            0.08f, 0.48f, 0.12f);
-        addTriangle(d, 0.0f, 0.42f, 0.0f, -0.42f, -0.30f, 0.0f, 0.42f, -0.30f, 0.0f,
-            0.05f, 0.38f, 0.08f);
-        return makeModel(d);
-    }
-
-    Model* createBushModel()
-    {
-        std::vector<float> d;
-        addTriangle(d, -0.55f, -0.35f, 0, 0.0f, 0.45f, 0, 0.55f, -0.35f, 0,
-            0.10f, 0.55f, 0.12f);
-        addTriangle(d, -0.45f, -0.30f, 0.15f, 0.0f, 0.38f, 0.15f, 0.45f, -0.30f, 0.15f,
-            0.16f, 0.68f, 0.18f);
-        return makeModel(d);
-    }
-
     TransformPtr place(float x, float y, float z, float scale, float tilt = 0.0f)
     {
         return makeComposite({
@@ -75,6 +53,41 @@ namespace
             std::make_shared<Rotate>(tilt, glm::vec3(0, 0, 1)),
             std::make_shared<Scale>(scale)
             });
+    }
+
+    TransformPtr placeY(float x, float y, float z, float scale, float yaw)
+    {
+        return makeComposite({
+            std::make_shared<Translate>(glm::vec3(x, y, z)),
+            std::make_shared<Rotate>(yaw, glm::vec3(0, 1, 0)),
+            std::make_shared<Scale>(scale)
+            });
+    }
+
+ 
+    Model* createClockModel()
+    {
+        std::vector<float> data(clockModel, clockModel + sizeof(clockModel) / sizeof(float));
+        for (size_t i = 0; i + 8 < data.size(); i += 9)
+        {
+            data[i] = -data[i];         
+            data[i + 3] = -data[i + 3]; 
+        }
+
+        const int seg = 48;
+        const float radius = 0.93f, z = -0.012f;
+        const float color[3] = { 0.95f, 0.92f, 0.80f };
+        auto addVertex = [&](float x, float y) {
+            data.insert(data.end(), { x, y, z, 0.0f, 0.0f, -1.0f, color[0], color[1], color[2] });
+            };
+        for (int i = 0; i < seg; ++i)
+        {
+            const float a0 = 2.0f * PI * i / seg, a1 = 2.0f * PI * (i + 1) / seg;
+            addVertex(0.0f, 0.0f);
+            addVertex(radius * std::cos(a0), radius * std::sin(a0));
+            addVertex(radius * std::cos(a1), radius * std::sin(a1));
+        }
+        return new Model(data.data(), static_cast<int>(data.size()), 9, 6);
     }
 
     Model* createSignatureModel()
@@ -85,12 +98,16 @@ namespace
 
 namespace
 {
-    constexpr float MOUSE_SENSITIVITY = 0.0025f; // radianu na pixel
-    constexpr float MOVE_SPEED = 1.5f;           // jednotek za sekundu
+    constexpr float MOUSE_SENSITIVITY = 0.0025f;
 
     void cursorPosCallback(GLFWwindow* window, double x, double y)
     {
         static_cast<Application*>(glfwGetWindowUserPointer(window))->onCursorMoved(x, y);
+    }
+
+    void mouseButtonCallback(GLFWwindow* window, int button, int action, int)
+    {
+        static_cast<Application*>(glfwGetWindowUserPointer(window))->onMouseButton(button, action);
     }
 
     void framebufferSizeCallback(GLFWwindow* window, int width, int height)
@@ -100,9 +117,9 @@ namespace
 }
 
 Application::Application(bool b)
-    : broken(b), window(nullptr), basicProgram(nullptr), redProgram(nullptr), activeScene(0),
+    : broken(b), window(nullptr), basicProgram(nullptr), redProgram(nullptr), clockProgram(nullptr), activeScene(0),
     triangleTransform(nullptr), translateFirst(true),
-    firstMouse(true), lastCursorX(0.0), lastCursorY(0.0), lastFrameTime(0.0) {}
+    lookActive(false), moveSpeed(1.5f), firstMouse(true), lastCursorX(0.0), lastCursorY(0.0), lastFrameTime(0.0) {}
 
 Application::~Application()
 {
@@ -110,6 +127,7 @@ Application::~Application()
     for (Model* model : models) delete model;
     delete basicProgram;
     delete redProgram;
+    delete clockProgram;
 }
 
 void Application::initialization()
@@ -143,19 +161,35 @@ void Application::initialization()
 
     glEnable(GL_DEPTH_TEST);
 
-    // Mys (rozhlizeni kamery) a zmena velikosti okna (pomer stran projekce).
+
     glfwSetWindowUserPointer(window, this);
     glfwSetCursorPosCallback(window, cursorPosCallback);
     glfwSetFramebufferSizeCallback(window, framebufferSizeCallback);
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+    glfwSetMouseButtonCallback(window, mouseButtonCallback);
 
     int width = 0, height = 0;
     glfwGetFramebufferSize(window, &width, &height);
     onFramebufferResized(width, height);
 }
 
+void Application::onMouseButton(int button, int action)
+{
+    if (button != GLFW_MOUSE_BUTTON_RIGHT) return;
+    if (action == GLFW_PRESS)
+    {
+        lookActive = true;
+        firstMouse = true; 
+    }
+    else if (action == GLFW_RELEASE)
+    {
+        lookActive = false;
+    }
+}
+
 void Application::onCursorMoved(double x, double y)
 {
+    if (!lookActive) return;
+
     if (firstMouse)
     {
         lastCursorX = x;
@@ -174,7 +208,7 @@ void Application::onCursorMoved(double x, double y)
 
 void Application::onFramebufferResized(int width, int height)
 {
-    if (width <= 0 || height <= 0) return; // minimalizovane okno
+    if (width <= 0 || height <= 0) return;
     glViewport(0, 0, width, height);
     camera.setAspect(static_cast<float>(width) / static_cast<float>(height));
 }
@@ -186,17 +220,22 @@ void Application::createShaders()
     const char* redFrag = broken ? "shaders/broken.frag" : "shaders/red.frag";
     redProgram = new ShaderProgram("shaders/basic.vert", redFrag);
 
-    // Kamera posila view a projection matici obema shader programum.
+
+    clockProgram = new ShaderProgram("shaders/clock.vert", "shaders/basic.frag");
+
     camera.attach(basicProgram);
     camera.attach(redProgram);
+    camera.attach(clockProgram);
 }
 
 namespace
 {
     enum ModelId
     {
-        TRIANGLE, SPHERE, TREE, BUSH, SIGNATURE,
-        SUN_BALL, EARTH, MOON, CLOCK
+        TRIANGLE, SPHERE, SIGNATURE, SUN_BALL, EARTH, MOON, CLOCK,
+        GROUND, POST,
+        TREE_CONIFER_DARK, TREE_CONIFER_LIGHT, TREE_ROUND_MID, TREE_ROUND_LIGHT,
+        BUSH_DARK, BUSH_LIGHT
     };
 }
 
@@ -204,13 +243,20 @@ void Application::createModels()
 {
     models.push_back(createTriangleModel()); // TRIANGLE
     models.push_back(new Model(sphere, sizeof(sphere) / sizeof(float))); // SPHERE
-    models.push_back(createTreeModel()); // TREE
-    models.push_back(createBushModel()); // BUSH
     models.push_back(createSignatureModel()); // SIGNATURE
     models.push_back(new Model(sun, sizeof(sun) / sizeof(float), 9)); // SUN
     models.push_back(new Model(earth, sizeof(earth) / sizeof(float), 9)); // EARTH
     models.push_back(new Model(moon, sizeof(moon) / sizeof(float), 9)); // MOON
-    models.push_back(new Model(clockModel, sizeof(clockModel) / sizeof(float), 9, 6)); // CLOCK (pozice, normala, barva)
+    models.push_back(createClockModel()); // CLOCK (pozice, normala, barva + cifernik)
+
+    models.push_back(makeModel(proc::ground(8, 7))); // GROUND
+    models.push_back(makeModel(proc::post())); // POST
+    models.push_back(makeModel(proc::conifer(glm::vec3(0.08f, 0.36f, 0.13f)))); // tmavy jehlicnan
+    models.push_back(makeModel(proc::conifer(glm::vec3(0.16f, 0.50f, 0.17f)))); // svetlejsi jehlicnan
+    models.push_back(makeModel(proc::broadleaf(glm::vec3(0.20f, 0.52f, 0.14f)))); // listnac
+    models.push_back(makeModel(proc::broadleaf(glm::vec3(0.34f, 0.62f, 0.20f)))); // svetly listnac
+    models.push_back(makeModel(proc::bush(glm::vec3(0.12f, 0.42f, 0.14f)))); // tmavy ker
+    models.push_back(makeModel(proc::bush(glm::vec3(0.26f, 0.55f, 0.18f)))); // svetly ker
 }
 
 void Application::createScenes()
@@ -238,34 +284,70 @@ void Application::createScenes()
 
 
     Scene* forest = new Scene("Les");
+    forest->setCameraStart(glm::vec3(0.0f, 1.7f, 14.0f), -PI / 2.0f, PI / 2.0f, 4.0f);
     std::mt19937 rng(34);
     auto random = [&rng](float lo, float hi) {
         return std::uniform_real_distribution<float>(lo, hi)(rng);
         };
-    for (int i = 0; i < 24; ++i)
+
+    forest->add(models[GROUND], basicProgram, makeComposite({ std::make_shared<Scale>(45.0f) }));
+
+    struct ClockSpot { float x, z, yaw; };
+    const ClockSpot clockSpots[] = {
+        { -4.0f,   6.0f, PI + 0.35f },
+        {  7.0f,  -5.0f, PI - 0.60f },
+        { -13.0f, -15.0f, PI + 0.90f },
+    };
+    const float clockHeight = 2.4f; 
+    for (const ClockSpot& c : clockSpots)
     {
-        const float x = random(-0.85f, 0.85f);
-        const float y = random(-0.45f, 0.55f);
-        forest->add(models[TREE], basicProgram,
-            place(x, y, 0.5f * y, random(0.18f, 0.30f), random(-0.07f, 0.07f)));
-    }
-    for (int i = 0; i < 24; ++i)
-    {
-        const float x = random(-0.85f, 0.85f);
-        const float y = random(-0.95f, 0.10f);
-        forest->add(models[BUSH], basicProgram,
-            place(x, y, 0.5f * y, random(0.08f, 0.15f), random(-0.1f, 0.1f)));
+        forest->add(models[CLOCK], clockProgram, placeY(c.x, clockHeight, c.z, 1.0f, c.yaw));
+        forest->add(models[POST], basicProgram, makeComposite({
+            std::make_shared<Translate>(glm::vec3(c.x, 0.0f, c.z)),
+            std::make_shared<Rotate>(c.yaw, glm::vec3(0, 1, 0)),
+            std::make_shared<Translate>(glm::vec3(0.0f, 0.0f, 0.15f)),
+            std::make_shared<Scale>(clockHeight)
+            }));
     }
 
+    const glm::vec2 keepOut[] = {
+        { clockSpots[0].x, clockSpots[0].z }, { clockSpots[1].x, clockSpots[1].z },
+        { clockSpots[2].x, clockSpots[2].z }, { 2.5f, 8.0f }, { 0.0f, 14.0f }
+    };
+    auto freeSpot = [&](float x, float z) {
+        for (const glm::vec2& k : keepOut)
+            if (glm::distance(glm::vec2(x, z), k) < 3.0f) return false;
+        return true;
+        };
+
+    const int TREE_COUNT = 80; 
+    const int BUSH_COUNT = 40;
+    const ModelId treeModels[] = { TREE_CONIFER_DARK, TREE_CONIFER_LIGHT, TREE_ROUND_MID, TREE_ROUND_LIGHT };
+    const ModelId bushModels[] = { BUSH_DARK, BUSH_LIGHT };
+
+    for (int i = 0; i < TREE_COUNT; ++i)
+    {
+        float x, z;
+        do { x = random(-43.0f, 43.0f); z = random(-43.0f, 43.0f); } while (!freeSpot(x, z));
+        forest->add(models[treeModels[rng() % 4]], basicProgram,
+            placeY(x, 0.0f, z, random(0.8f, 1.8f), random(0.0f, 2.0f * PI)));
+    }
+    for (int i = 0; i < BUSH_COUNT; ++i)
+    {
+        float x, z;
+        do { x = random(-43.0f, 43.0f); z = random(-43.0f, 43.0f); } while (!freeSpot(x, z));
+        forest->add(models[bushModels[rng() % 2]], basicProgram,
+            placeY(x, 0.0f, z, random(0.7f, 1.7f), random(0.0f, 2.0f * PI)));
+    }
 
     forest->add(models[SUN_BALL], basicProgram, makeComposite({
-        std::make_shared<Translate>(glm::vec3(0.72f, 0.72f, 0.6f)),
+        std::make_shared<Translate>(glm::vec3(30.0f, 22.0f, -55.0f)),
         std::make_shared<DynamicRotate>(axisY, 0.4f),
         std::make_shared<DynamicScale>([](float t) {
-            return glm::vec3(0.16f * (1.0f + 0.1f * std::sin(2.0f * t)));
+            return glm::vec3(4.0f * (1.0f + 0.1f * std::sin(2.0f * t)));
         })
         }));
-    forest->add(models[SIGNATURE], basicProgram, place(0.72f, -0.82f, -0.95f, 0.16f));
+    forest->add(models[SIGNATURE], basicProgram, placeY(2.5f, 0.5f, 8.0f, 1.2f, 0.0f));
     scenes.push_back(forest);
 
     Scene* signature = new Scene("Vlastni login");
@@ -300,7 +382,7 @@ void Application::createScenes()
     scenes.push_back(solar);
 
     Scene* clockScene = new Scene("Hodiny");
-    clockScene->add(models[CLOCK], basicProgram, place(0, 0, 0, 0.9f));
+    clockScene->add(models[CLOCK], clockProgram, placeY(0, 0, 0, 0.9f, PI));
     clockScene->add(models[SIGNATURE], basicProgram, place(0.68f, -0.88f, -0.95f, 0.14f));
     scenes.push_back(clockScene);
 }
@@ -314,11 +396,32 @@ void Application::updateTitle()
     glfwSetWindowTitle(window, title.c_str());
 }
 
+void Application::updateClock()
+{
+    using namespace std::chrono;
+    const auto now = system_clock::now();
+    const std::time_t t = system_clock::to_time_t(now);
+    std::tm local{};
+#ifdef _WIN32
+    localtime_s(&local, &t);
+#else
+    localtime_r(&t, &local);
+#endif
+    const double fraction = static_cast<double>(duration_cast<milliseconds>(now.time_since_epoch()).count() % 1000) / 1000.0;
+    const float seconds = static_cast<float>(local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec + fraction);
+
+    clockProgram->use();
+    clockProgram->setUniform("clockSeconds", seconds);
+}
+
 void Application::setScene(int index)
 {
     if (index >= 0 && index < static_cast<int>(scenes.size()))
     {
         activeScene = index;
+        const Scene* scene = scenes[activeScene];
+        camera.setPose(scene->getCameraEye(), scene->getCameraFi(), scene->getCameraAlpha());
+        moveSpeed = scene->getMoveSpeed();
         std::cout << "Aktivni scena: " << activeScene + 1 << " - "
             << scenes[activeScene]->getName() << std::endl;
         updateTitle();
@@ -339,9 +442,9 @@ void Application::processInput()
         previous[i] = pressed;
     }
 
-    // Pohyb kamery: W/S dopredu/dozadu, A/D do stran.
+
     const double now = glfwGetTime();
-    const float step = MOVE_SPEED * static_cast<float>(now - lastFrameTime);
+    const float step = moveSpeed * static_cast<float>(now - lastFrameTime);
     lastFrameTime = now;
     float forward = 0.0f, right = 0.0f;
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) forward += step;
@@ -365,7 +468,7 @@ void Application::processInput()
 
 void Application::run()
 {
-    if (!scenes.empty()) updateTitle();
+    if (!scenes.empty()) setScene(activeScene);
     lastFrameTime = glfwGetTime();
 
     while (!glfwWindowShouldClose(window))
@@ -375,6 +478,7 @@ void Application::run()
         glClearColor(0.035f, 0.045f, 0.08f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        updateClock();
         if (!scenes.empty())
             scenes[activeScene]->draw(static_cast<float>(glfwGetTime()));
 

@@ -1,6 +1,12 @@
 #include "Scene.h"
 
-Scene::Scene(const std::string& name) : name(name) {}
+namespace
+{
+    constexpr float PI = 3.14159265358979323846f;
+}
+
+Scene::Scene(const std::string& name)
+    : name(name), cameraEye(0.0f, 0.0f, 1.75f), cameraFi(-PI / 2.0f), cameraAlpha(PI / 2.0f), moveSpeed(1.5f) {}
 
 DrawableObject& Scene::add(Model* model, ShaderProgram* program, TransformPtr transform)
 {
@@ -18,3 +24,16 @@ const std::string& Scene::getName() const
 {
     return name;
 }
+
+void Scene::setCameraStart(const glm::vec3& eye, float fi, float alpha, float speed)
+{
+    cameraEye = eye;
+    cameraFi = fi;
+    cameraAlpha = alpha;
+    moveSpeed = speed;
+}
+
+const glm::vec3& Scene::getCameraEye() const { return cameraEye; }
+float Scene::getCameraFi() const { return cameraFi; }
+float Scene::getCameraAlpha() const { return cameraAlpha; }
+float Scene::getMoveSpeed() const { return moveSpeed; }
