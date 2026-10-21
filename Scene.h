@@ -19,6 +19,9 @@ public:
     float getCameraAlpha() const;
     float getMoveSpeed() const;
 
+    void setFreeLook(bool enabled);
+    bool isFreeLook() const;
+
 private:
     std::string name;
     std::vector<DrawableObject> objects;
@@ -27,4 +30,5 @@ private:
     float cameraFi;
     float cameraAlpha;
     float moveSpeed;
+    bool freeLook;
 };

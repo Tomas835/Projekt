@@ -64,14 +64,14 @@ namespace
             });
     }
 
- 
+
     Model* createClockModel()
     {
         std::vector<float> data(clockModel, clockModel + sizeof(clockModel) / sizeof(float));
         for (size_t i = 0; i + 8 < data.size(); i += 9)
         {
-            data[i] = -data[i];         
-            data[i + 3] = -data[i + 3]; 
+            data[i] = -data[i];
+            data[i + 3] = -data[i + 3];
         }
 
         const int seg = 48;
@@ -178,7 +178,7 @@ void Application::onMouseButton(int button, int action)
     if (action == GLFW_PRESS)
     {
         lookActive = true;
-        firstMouse = true; 
+        firstMouse = true;
     }
     else if (action == GLFW_RELEASE)
     {
@@ -188,7 +188,7 @@ void Application::onMouseButton(int button, int action)
 
 void Application::onCursorMoved(double x, double y)
 {
-    if (!lookActive) return;
+    if (!lookActive && !scenes[activeScene]->isFreeLook()) return;
 
     if (firstMouse)
     {
@@ -285,6 +285,7 @@ void Application::createScenes()
 
     Scene* forest = new Scene("Les");
     forest->setCameraStart(glm::vec3(0.0f, 1.7f, 14.0f), -PI / 2.0f, PI / 2.0f, 4.0f);
+    forest->setFreeLook(true);
     std::mt19937 rng(34);
     auto random = [&rng](float lo, float hi) {
         return std::uniform_real_distribution<float>(lo, hi)(rng);
@@ -298,7 +299,7 @@ void Application::createScenes()
         {  7.0f,  -5.0f, PI - 0.60f },
         { -13.0f, -15.0f, PI + 0.90f },
     };
-    const float clockHeight = 2.4f; 
+    const float clockHeight = 2.4f;
     for (const ClockSpot& c : clockSpots)
     {
         forest->add(models[CLOCK], clockProgram, placeY(c.x, clockHeight, c.z, 1.0f, c.yaw));
@@ -320,7 +321,7 @@ void Application::createScenes()
         return true;
         };
 
-    const int TREE_COUNT = 80; 
+    const int TREE_COUNT = 80;
     const int BUSH_COUNT = 40;
     const ModelId treeModels[] = { TREE_CONIFER_DARK, TREE_CONIFER_LIGHT, TREE_ROUND_MID, TREE_ROUND_LIGHT };
     const ModelId bushModels[] = { BUSH_DARK, BUSH_LIGHT };
@@ -422,6 +423,9 @@ void Application::setScene(int index)
         const Scene* scene = scenes[activeScene];
         camera.setPose(scene->getCameraEye(), scene->getCameraFi(), scene->getCameraAlpha());
         moveSpeed = scene->getMoveSpeed();
+        glfwSetInputMode(window, GLFW_CURSOR, scene->isFreeLook() ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+        firstMouse = true;
+        lookActive = false;
         std::cout << "Aktivni scena: " << activeScene + 1 << " - "
             << scenes[activeScene]->getName() << std::endl;
         updateTitle();

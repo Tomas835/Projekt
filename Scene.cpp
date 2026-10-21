@@ -6,7 +6,7 @@ namespace
 }
 
 Scene::Scene(const std::string& name)
-    : name(name), cameraEye(0.0f, 0.0f, 1.75f), cameraFi(-PI / 2.0f), cameraAlpha(PI / 2.0f), moveSpeed(1.5f) {}
+    : name(name), cameraEye(0.0f, 0.0f, 1.75f), cameraFi(-PI / 2.0f), cameraAlpha(PI / 2.0f), moveSpeed(1.5f), freeLook(false) {}
 
 DrawableObject& Scene::add(Model* model, ShaderProgram* program, TransformPtr transform)
 {
@@ -37,3 +37,5 @@ const glm::vec3& Scene::getCameraEye() const { return cameraEye; }
 float Scene::getCameraFi() const { return cameraFi; }
 float Scene::getCameraAlpha() const { return cameraAlpha; }
 float Scene::getMoveSpeed() const { return moveSpeed; }
+void Scene::setFreeLook(bool enabled) { freeLook = enabled; }
+bool Scene::isFreeLook() const { return freeLook; }
