@@ -4,7 +4,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 
-class Camera; 
+class Camera;
 
 class ShaderProgram
 {
@@ -20,7 +20,10 @@ public:
     bool setUniform(const char* name, float x, float y, float z) const;
     bool setUniform(const char* name, float x, float y, float z, float w) const;
 
+    bool setUniform(const char* name, const glm::vec3& vector) const;
     bool setUniform(const char* name, const glm::mat4& matrix) const;
+
+    bool hasUniform(const char* name) const;
 
 
     void onCameraChanged(const Camera& camera) const;

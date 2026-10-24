@@ -117,7 +117,12 @@
     <ClInclude Include="Transform.h" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="binn.frag" />
     <None Include="clock.vert" />
+    <None Include="constant.frag" />
+    <None Include="lambert.frag" />
+    <None Include="lit.vert" />
+    <None Include="phong.frag" />
     <None Include="shaders\basic.vert" />
     <None Include="shaders\basic.frag" />
     <None Include="shaders\red.frag" />

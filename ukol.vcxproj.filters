@@ -103,5 +103,20 @@
     <None Include="clock.vert">
       <Filter>Shadery</Filter>
     </None>
+    <None Include="phong.frag">
+      <Filter>Shadery</Filter>
+    </None>
+    <None Include="lit.vert">
+      <Filter>Shadery</Filter>
+    </None>
+    <None Include="lambert.frag">
+      <Filter>Shadery</Filter>
+    </None>
+    <None Include="constant.frag">
+      <Filter>Shadery</Filter>
+    </None>
+    <None Include="binn.frag">
+      <Filter>Shadery</Filter>
+    </None>
   </ItemGroup>
 </Project>

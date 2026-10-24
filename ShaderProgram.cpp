@@ -120,6 +120,16 @@ bool ShaderProgram::setUniform(const char* name, float x, float y, float z, floa
     return true;
 }
 
+bool ShaderProgram::setUniform(const char* name, const glm::vec3& vector) const
+{
+    return setUniform(name, vector.x, vector.y, vector.z);
+}
+
+bool ShaderProgram::hasUniform(const char* name) const
+{
+    return glGetUniformLocation(id, name) != -1;
+}
+
 bool ShaderProgram::setUniform(const char* name, const glm::mat4& matrix) const
 {
     GLint location = uniformLocation(name);
@@ -130,7 +140,9 @@ bool ShaderProgram::setUniform(const char* name, const glm::mat4& matrix) const
 
 void ShaderProgram::onCameraChanged(const Camera& camera) const
 {
-    use(); 
+    use();
     setUniform("viewMatrix", camera.getViewMatrix());
     setUniform("projectionMatrix", camera.getProjectionMatrix());
+    if (hasUniform("viewPosition"))      // only shaders with a specular term (Phong, Blinn)
+        setUniform("viewPosition", camera.getPosition());
 }

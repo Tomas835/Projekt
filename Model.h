@@ -6,7 +6,8 @@
 class Model
 {
 public:
-	Model(const float* data, int floatCount, int floatsPerVertex = 6, int colorOffset = 3);
+	// Attributes: 0 = position (offset 0), 1 = color (colorOffset), 2 = normal (normalOffset, -1 = model has no normals)
+	Model(const float* data, int floatCount, int floatsPerVertex = 6, int colorOffset = 3, int normalOffset = -1);
 	void draw() const;
 
 private:

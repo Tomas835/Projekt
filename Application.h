@@ -28,12 +28,17 @@ private:
     void setScene(int index);
     void updateTitle();
     void updateClock();
+    void applyLight(const Scene& scene);
 
     bool broken;
     GLFWwindow* window;
     ShaderProgram* basicProgram;
     ShaderProgram* redProgram;
     ShaderProgram* clockProgram;
+    ShaderProgram* constantProgram;   // ambient
+    ShaderProgram* lambertProgram;    // ambient + diffuse
+    ShaderProgram* phongProgram;      // + specular (reflect vector)
+    ShaderProgram* blinnProgram;      // + specular (half-vector)
     std::vector<Model*> models;
     std::vector<Scene*> scenes;
     int activeScene;
@@ -42,7 +47,7 @@ private:
     bool translateFirst;
 
     Camera camera;
-    bool lookActive;   
+    bool lookActive;
     float moveSpeed;
     bool firstMouse;
     double lastCursorX;

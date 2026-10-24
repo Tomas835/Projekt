@@ -1,6 +1,6 @@
 #include "Model.h"
 
-Model::Model(const float* data, int floatCount, int floatsPerVertex, int colorOffset)
+Model::Model(const float* data, int floatCount, int floatsPerVertex, int colorOffset, int normalOffset)
 {
 	vertexCount = floatCount / floatsPerVertex;
 
@@ -14,6 +14,12 @@ Model::Model(const float* data, int floatCount, int floatsPerVertex, int colorOf
 	glEnableVertexAttribArray(1);
 	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, floatsPerVertex * sizeof(float), (void*)0);
 	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, floatsPerVertex * sizeof(float), (void*)(colorOffset * sizeof(float)));
+
+	if (normalOffset >= 0)
+	{
+		glEnableVertexAttribArray(2);
+		glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, floatsPerVertex * sizeof(float), (void*)(normalOffset * sizeof(float)));
+	}
 }
 
 void Model::draw() const

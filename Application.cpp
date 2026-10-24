@@ -90,6 +90,21 @@ namespace
         return new Model(data.data(), static_cast<int>(data.size()), 9, 6);
     }
 
+    // sphere.h stores position + normal (6 floats); lighting needs position + color + normal (9 floats)
+    Model* createLitSphere(const glm::vec3& color)
+    {
+        const int count = static_cast<int>(sizeof(sphere) / sizeof(float));
+        std::vector<float> data;
+        data.reserve(count / 6 * 9);
+        for (int i = 0; i + 5 < count; i += 6)
+        {
+            data.insert(data.end(), { sphere[i], sphere[i + 1], sphere[i + 2],
+                color.r, color.g, color.b,
+                sphere[i + 3], sphere[i + 4], sphere[i + 5] });
+        }
+        return new Model(data.data(), static_cast<int>(data.size()), 9, 3, 6);
+    }
+
     Model* createSignatureModel()
     {
         return new Model(vyl0034_logo, static_cast<int>(sizeof(vyl0034_logo) / sizeof(float)));
@@ -117,7 +132,8 @@ namespace
 }
 
 Application::Application(bool b)
-    : broken(b), window(nullptr), basicProgram(nullptr), redProgram(nullptr), clockProgram(nullptr), activeScene(0),
+    : broken(b), window(nullptr), basicProgram(nullptr), redProgram(nullptr), clockProgram(nullptr),
+    constantProgram(nullptr), lambertProgram(nullptr), phongProgram(nullptr), blinnProgram(nullptr), activeScene(0),
     triangleTransform(nullptr), translateFirst(true),
     lookActive(false), moveSpeed(1.5f), firstMouse(true), lastCursorX(0.0), lastCursorY(0.0), lastFrameTime(0.0) {}
 
@@ -128,6 +144,10 @@ Application::~Application()
     delete basicProgram;
     delete redProgram;
     delete clockProgram;
+    delete constantProgram;
+    delete lambertProgram;
+    delete phongProgram;
+    delete blinnProgram;
 }
 
 void Application::initialization()
@@ -226,6 +246,17 @@ void Application::createShaders()
     camera.attach(basicProgram);
     camera.attach(redProgram);
     camera.attach(clockProgram);
+
+    // Four lighting models - shared vertex shader, different fragment shaders
+    constantProgram = new ShaderProgram("shaders/lit.vert", "shaders/constant.frag");
+    lambertProgram = new ShaderProgram("shaders/lit.vert", "shaders/lambert.frag");
+    phongProgram = new ShaderProgram("shaders/lit.vert", "shaders/phong.frag");
+    blinnProgram = new ShaderProgram("shaders/lit.vert", "shaders/blinn.frag");
+
+    camera.attach(constantProgram);
+    camera.attach(lambertProgram);
+    camera.attach(phongProgram);
+    camera.attach(blinnProgram);
 }
 
 namespace
@@ -235,7 +266,8 @@ namespace
         TRIANGLE, SPHERE, SIGNATURE, SUN_BALL, EARTH, MOON, CLOCK,
         GROUND, POST,
         TREE_CONIFER_DARK, TREE_CONIFER_LIGHT, TREE_ROUND_MID, TREE_ROUND_LIGHT,
-        BUSH_DARK, BUSH_LIGHT
+        BUSH_DARK, BUSH_LIGHT,
+        ROCKET, LIT_SPHERE, MERCURY, VENUS, MARS, JUPITER, LIGHT_MARKER
     };
 }
 
@@ -244,19 +276,30 @@ void Application::createModels()
     models.push_back(createTriangleModel()); // TRIANGLE
     models.push_back(new Model(sphere, sizeof(sphere) / sizeof(float))); // SPHERE
     models.push_back(createSignatureModel()); // SIGNATURE
-    models.push_back(new Model(sun, sizeof(sun) / sizeof(float), 9)); // SUN
-    models.push_back(new Model(earth, sizeof(earth) / sizeof(float), 9)); // EARTH
-    models.push_back(new Model(moon, sizeof(moon) / sizeof(float), 9)); // MOON
-    models.push_back(createClockModel()); // CLOCK (pozice, normala, barva + cifernik)
+    models.push_back(new Model(sun, sizeof(sun) / sizeof(float), 9, 3, 6)); // SUN (position, color, normal)
+    models.push_back(new Model(earth, sizeof(earth) / sizeof(float), 9, 3, 6)); // EARTH
+    models.push_back(new Model(moon, sizeof(moon) / sizeof(float), 9, 3, 6)); // MOON
+    models.push_back(createClockModel()); // CLOCK (position, normal, color + dial)
 
     models.push_back(makeModel(proc::ground(8, 7))); // GROUND
     models.push_back(makeModel(proc::post())); // POST
-    models.push_back(makeModel(proc::conifer(glm::vec3(0.08f, 0.36f, 0.13f)))); // tmavy jehlicnan
-    models.push_back(makeModel(proc::conifer(glm::vec3(0.16f, 0.50f, 0.17f)))); // svetlejsi jehlicnan
-    models.push_back(makeModel(proc::broadleaf(glm::vec3(0.20f, 0.52f, 0.14f)))); // listnac
-    models.push_back(makeModel(proc::broadleaf(glm::vec3(0.34f, 0.62f, 0.20f)))); // svetly listnac
-    models.push_back(makeModel(proc::bush(glm::vec3(0.12f, 0.42f, 0.14f)))); // tmavy ker
-    models.push_back(makeModel(proc::bush(glm::vec3(0.26f, 0.55f, 0.18f)))); // svetly ker
+    models.push_back(makeModel(proc::conifer(glm::vec3(0.08f, 0.36f, 0.13f)))); // dark conifer
+    models.push_back(makeModel(proc::conifer(glm::vec3(0.16f, 0.50f, 0.17f)))); // lighter conifer
+    models.push_back(makeModel(proc::broadleaf(glm::vec3(0.20f, 0.52f, 0.14f)))); // broadleaf tree
+    models.push_back(makeModel(proc::broadleaf(glm::vec3(0.34f, 0.62f, 0.20f)))); // light broadleaf tree
+    models.push_back(makeModel(proc::bush(glm::vec3(0.12f, 0.42f, 0.14f)))); // dark bush
+    models.push_back(makeModel(proc::bush(glm::vec3(0.26f, 0.55f, 0.18f)))); // light bush
+
+    {
+        const proc::Data rocket = proc::rocket();
+        models.push_back(new Model(rocket.data(), static_cast<int>(rocket.size()), 9, 3, 6)); // ROCKET
+    }
+    models.push_back(createLitSphere(glm::vec3(0.25f, 0.55f, 0.95f)));  // LIT_SPHERE (test sphere)
+    models.push_back(createLitSphere(glm::vec3(0.62f, 0.58f, 0.55f)));  // MERCURY
+    models.push_back(createLitSphere(glm::vec3(0.90f, 0.75f, 0.45f)));  // VENUS
+    models.push_back(createLitSphere(glm::vec3(0.80f, 0.30f, 0.15f)));  // MARS
+    models.push_back(createLitSphere(glm::vec3(0.80f, 0.62f, 0.42f)));  // JUPITER
+    models.push_back(createLitSphere(glm::vec3(1.00f, 0.95f, 0.60f)));  // LIGHT_MARKER
 }
 
 void Application::createScenes()
@@ -357,30 +400,89 @@ void Application::createScenes()
     scenes.push_back(signature);
 
 
+    // ---------------------------------------------------------------
+    // Solar system with lighting: the Sun is the light source at the origin [0,0,0]
+    // ---------------------------------------------------------------
     Scene* solar = new Scene("Slunecni soustava");
-    solar->add(models[SUN_BALL], basicProgram, makeComposite({
+    solar->setLight(glm::vec3(0.0f, 0.0f, 0.0f));
+    solar->setCameraStart(glm::vec3(0.0f, 0.0f, 3.4f), -PI / 2.0f, PI / 2.0f, 1.5f);
+
+    // Sun - constant shader (uniformly visible, independent of light direction)
+    solar->add(models[SUN_BALL], constantProgram, makeComposite({
         std::make_shared<DynamicRotate>(axisY, 0.4f),
         std::make_shared<Scale>(0.25f)
         }));
 
+    // Planets on circular orbits (rotation around Z * translation by the orbit radius)
+    auto planet = [&](ModelId id, ShaderProgram* program, float orbitRadius, float orbitSpeed,
+        float phase, float size)
+        {
+            solar->add(models[id], program, makeComposite({
+                std::make_shared<DynamicRotate>(axisZ, orbitSpeed, phase),
+                std::make_shared<Translate>(glm::vec3(orbitRadius, 0.0f, 0.0f)),
+                std::make_shared<Scale>(size)
+                }));
+        };
+    planet(MERCURY, phongProgram, 0.45f, 1.6f, 0.5f, 0.04f);
+    planet(VENUS, blinnProgram, 0.62f, 1.0f, 2.4f, 0.07f);
+    planet(MARS, phongProgram, 1.00f, 0.35f, 4.0f, 0.06f);
+    planet(JUPITER, blinnProgram, 1.30f, 0.20f, 1.0f, 0.16f);
+
+    // Earth (Phong) + Moon (Blinn-Phong)
     CompositePtr earthOrbit = makeComposite({
         std::make_shared<DynamicRotate>(axisZ, 0.5f),
-        std::make_shared<Translate>(glm::vec3(0.72f, 0.0f, 0.0f))
+        std::make_shared<Translate>(glm::vec3(0.82f, 0.0f, 0.0f))
         });
-    solar->add(models[EARTH], basicProgram, makeComposite({
+    solar->add(models[EARTH], phongProgram, makeComposite({
         earthOrbit,
         std::make_shared<DynamicRotate>(axisY, 2.5f),
         std::make_shared<Scale>(0.09f)
         }));
-    solar->add(models[MOON], basicProgram, makeComposite({
+    solar->add(models[MOON], blinnProgram, makeComposite({
         earthOrbit,
         std::make_shared<DynamicRotate>(axisZ, 3.0f),
         std::make_shared<Translate>(glm::vec3(0.17f, 0.0f, 0.0f)),
         std::make_shared<DynamicRotate>(axisY, 1.0f),
         std::make_shared<Scale>(0.035f)
         }));
-    solar->add(models[SIGNATURE], basicProgram, place(0.68f, -0.88f, -0.95f, 0.14f));
+
+    // Rockets (procedurally generated model, nose points to +Y; rotation around Z turns it along the orbit tangent).
+    // 1) rocket orbits the Earth in a tilted plane
+    solar->add(models[ROCKET], phongProgram, makeComposite({
+        earthOrbit,
+        std::make_shared<Rotate>(0.8f, glm::vec3(1, 0, 0)),
+        std::make_shared<DynamicRotate>(axisZ, 3.0f),
+        std::make_shared<Translate>(glm::vec3(0.26f, 0.0f, 0.0f)),
+        std::make_shared<Scale>(0.07f)
+        }));
+    // 2) rocket orbits the Sun between Mars and Jupiter in a different plane
+    solar->add(models[ROCKET], phongProgram, makeComposite({
+        std::make_shared<Rotate>(0.5f, glm::vec3(1, 0, 0)),
+        std::make_shared<DynamicRotate>(axisZ, 0.9f, 1.5f),
+        std::make_shared<Translate>(glm::vec3(1.15f, 0.0f, 0.0f)),
+        std::make_shared<Scale>(0.09f)
+        }));
+
+    solar->add(models[SIGNATURE], basicProgram, place(1.45f, -1.2f, 0.9f, 0.2f));
     scenes.push_back(solar);
+
+    // ---------------------------------------------------------------
+    // Test scene: four spheres, point light in the middle [0,0,0]
+    // around the light: constant, Lambert, Phong, Blinn-Phong
+    // ---------------------------------------------------------------
+    Scene* spheres = new Scene("Ctyri koule: konstantni / Lambert / Phong / Blinn");
+    spheres->setLight(glm::vec3(0.0f, 0.0f, 0.0f));
+    {
+        const glm::vec3 eye(0.0f, 8.0f, 3.0f);
+        const glm::vec3 dir = glm::normalize(-eye);          // look at the origin
+        spheres->setCameraStart(eye, std::atan2(dir.z, dir.x), std::acos(dir.y), 3.0f);
+    }
+    spheres->add(models[LIT_SPHERE], constantProgram, place(-3.0f, 0.0f, 0.0f, 1.0f));
+    spheres->add(models[LIT_SPHERE], lambertProgram, place(0.0f, 0.0f, -3.0f, 1.0f));
+    spheres->add(models[LIT_SPHERE], phongProgram, place(3.0f, 0.0f, 0.0f, 1.0f));
+    spheres->add(models[LIT_SPHERE], blinnProgram, place(0.0f, 0.0f, 3.0f, 1.0f));
+    spheres->add(models[LIGHT_MARKER], constantProgram, place(0.0f, 0.0f, 0.0f, 0.15f)); // light position marker
+    scenes.push_back(spheres);
 
     Scene* clockScene = new Scene("Hodiny");
     clockScene->add(models[CLOCK], clockProgram, placeY(0, 0, 0, 0.9f, PI));
@@ -415,6 +517,17 @@ void Application::updateClock()
     clockProgram->setUniform("clockSeconds", seconds);
 }
 
+void Application::applyLight(const Scene& scene)
+{
+    ShaderProgram* lit[] = { constantProgram, lambertProgram, phongProgram, blinnProgram };
+    for (ShaderProgram* program : lit)
+    {
+        program->use();
+        if (program->hasUniform("lightPosition")) program->setUniform("lightPosition", scene.getLightPosition());
+        if (program->hasUniform("lightColor")) program->setUniform("lightColor", scene.getLightColor());
+    }
+}
+
 void Application::setScene(int index)
 {
     if (index >= 0 && index < static_cast<int>(scenes.size()))
@@ -423,6 +536,7 @@ void Application::setScene(int index)
         const Scene* scene = scenes[activeScene];
         camera.setPose(scene->getCameraEye(), scene->getCameraFi(), scene->getCameraAlpha());
         moveSpeed = scene->getMoveSpeed();
+        applyLight(*scene);
         glfwSetInputMode(window, GLFW_CURSOR, scene->isFreeLook() ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
         firstMouse = true;
         lookActive = false;

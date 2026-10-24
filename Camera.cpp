@@ -41,6 +41,11 @@ glm::mat4 Camera::getProjectionMatrix() const
     return glm::perspective(fov, aspect, zNear, zFar);
 }
 
+glm::vec3 Camera::getPosition() const
+{
+    return eye;
+}
+
 void Camera::rotate(float deltaFi, float deltaAlpha)
 {
     fi = std::fmod(fi + deltaFi, 2.0f * PI);

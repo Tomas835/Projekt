@@ -19,6 +19,10 @@ public:
     float getCameraAlpha() const;
     float getMoveSpeed() const;
 
+    void setLight(const glm::vec3& position, const glm::vec3& color = glm::vec3(1.0f));
+    const glm::vec3& getLightPosition() const;
+    const glm::vec3& getLightColor() const;
+
     void setFreeLook(bool enabled);
     bool isFreeLook() const;
 
@@ -30,5 +34,7 @@ private:
     float cameraFi;
     float cameraAlpha;
     float moveSpeed;
+    glm::vec3 lightPosition;
+    glm::vec3 lightColor;
     bool freeLook;
 };
