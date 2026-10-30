@@ -10,6 +10,10 @@ namespace proc
     constexpr float PI = 3.14159265358979323846f;
 
 
+    // Lit mode: models are generated with normals (9 floats per vertex: position, color, normal)
+    // and with the pure material color (without the fake baked-in lighting used by the unlit models).
+    inline bool& litMode() { static bool v = false; return v; }
+
     inline void addTri(Data& d, const glm::vec3& a, const glm::vec3& b, const glm::vec3& c,
         const glm::vec3& color, const glm::vec3& inside)
     {
@@ -17,7 +21,15 @@ namespace proc
         const float len = glm::length(n);
         n = (len > 1e-8f) ? n / len : glm::vec3(0, 1, 0);
         const glm::vec3 centroid = (a + b + c) / 3.0f;
-        if (glm::dot(n, centroid - inside) < 0.0f) n = -n;
+        if (glm::dot(n, centroid - inside) < 0.0f) n = -n;   // make the normal point outward
+
+        if (litMode())
+        {
+            // flat normal, pure material color
+            for (const glm::vec3& p : { a, b, c })
+                d.insert(d.end(), { p.x, p.y, p.z, color.r, color.g, color.b, n.x, n.y, n.z });
+            return;
+        }
 
         const glm::vec3 light = glm::normalize(glm::vec3(0.4f, 0.8f, 0.5f));
         const float k = 0.55f + 0.45f * std::max(0.0f, glm::dot(n, light));
@@ -213,7 +225,7 @@ namespace proc
                 const float t = u(rng);
                 glm::vec3 col = glm::mix(glm::vec3(0.30f, 0.21f, 0.11f), glm::vec3(0.22f, 0.30f, 0.12f), t * t);
                 col *= 0.85f + 0.3f * u(rng);
-                const glm::vec3 up(0, -1, 0);
+                const glm::vec3 up(0, -1, 0);   // "inside" point is below the ground, so the normals point up
                 addTri(d, { x0, 0, z0 }, { x0, 0, z1 }, { x1, 0, z1 }, col, up);
                 addTri(d, { x0, 0, z0 }, { x1, 0, z1 }, { x1, 0, z0 }, col, up);
             }

@@ -26,6 +26,16 @@ namespace
         return model;
     }
 
+    // Procedural model generated with normals (position, color, normal) and pure material colors
+    template <class Builder>
+    Model* makeLitModel(Builder build)
+    {
+        proc::litMode() = true;                  // addTri() emits 9 floats per vertex while this is on
+        const proc::Data data = build();
+        proc::litMode() = false;
+        return new Model(data.data(), static_cast<int>(data.size()), 9, 3, 6);
+    }
+
     void addTriangle(std::vector<float>& data,
         float x1, float y1, float z1,
         float x2, float y2, float z2,
@@ -133,8 +143,11 @@ namespace
 
 Application::Application(bool b)
     : broken(b), window(nullptr), basicProgram(nullptr), redProgram(nullptr), clockProgram(nullptr),
-    constantProgram(nullptr), lambertProgram(nullptr), phongProgram(nullptr), blinnProgram(nullptr), activeScene(0),
+    constantProgram(nullptr), lambertProgram(nullptr), phongProgram(nullptr), blinnProgram(nullptr),
+    phongWrongNormalsProgram(nullptr), phongLeakProgram(nullptr), phongClipProgram(nullptr),
+    nightMatteProgram(nullptr), nightTreeProgram(nullptr), activeScene(0),
     triangleTransform(nullptr), translateFirst(true),
+    resizeCorrect(true), framebufferWidth(0), framebufferHeight(0),
     lookActive(false), moveSpeed(1.5f), firstMouse(true), lastCursorX(0.0), lastCursorY(0.0), lastFrameTime(0.0) {}
 
 Application::~Application()
@@ -148,6 +161,11 @@ Application::~Application()
     delete lambertProgram;
     delete phongProgram;
     delete blinnProgram;
+    delete phongWrongNormalsProgram;
+    delete phongLeakProgram;
+    delete phongClipProgram;
+    delete nightMatteProgram;
+    delete nightTreeProgram;
 }
 
 void Application::initialization()
@@ -228,9 +246,18 @@ void Application::onCursorMoved(double x, double y)
 
 void Application::onFramebufferResized(int width, int height)
 {
-    if (width <= 0 || height <= 0) return;
+    if (width <= 0 || height <= 0) return;   // minimized window
+    framebufferWidth = width;
+    framebufferHeight = height;
+
     glViewport(0, 0, width, height);
-    camera.setAspect(static_cast<float>(width) / static_cast<float>(height));
+    if (resizeCorrect)
+    {
+        // CORRECT: both the viewport and the aspect ratio of the projection match the new window size
+        camera.setAspect(static_cast<float>(width) / static_cast<float>(height));
+    }
+    // WRONG (resizeCorrect == false): the viewport changes, but the projection keeps the old aspect ratio,
+    // so the scene (e.g. the ball) gets distorted when the window is resized.
 }
 
 void Application::createShaders()
@@ -257,6 +284,35 @@ void Application::createShaders()
     camera.attach(lambertProgram);
     camera.attach(phongProgram);
     camera.attach(blinnProgram);
+
+    // Wrong normal conversion (mat3(M) * n) and Phong without / with clipping of the far-side highlight.
+    // The shininess exponent is set to 1 so the highlight is wide and the far-side leak is clearly visible.
+    phongWrongNormalsProgram = new ShaderProgram("shaders/lit_wrong.vert", "shaders/phong.frag");
+    phongLeakProgram = new ShaderProgram("shaders/lit.vert", "shaders/phong_leak.frag");
+    phongClipProgram = new ShaderProgram("shaders/lit.vert", "shaders/phong.frag");
+    phongLeakProgram->use();
+    phongLeakProgram->setUniform("shininess", 1.0f);
+    phongClipProgram->use();
+    phongClipProgram->setUniform("shininess", 1.0f);
+
+    // Night forest: Phong with attenuation, two materials (matte and slightly shinier)
+    nightMatteProgram = new ShaderProgram("shaders/lit.vert", "shaders/night.frag");
+    nightTreeProgram = new ShaderProgram("shaders/lit.vert", "shaders/night.frag");
+    nightMatteProgram->use();
+    nightMatteProgram->setUniform("specularStrength", 0.02f);
+    nightMatteProgram->setUniform("shininess", 4.0f);
+    nightTreeProgram->use();
+    nightTreeProgram->setUniform("specularStrength", 0.10f);
+    nightTreeProgram->setUniform("shininess", 16.0f);
+
+    camera.attach(phongWrongNormalsProgram);
+    camera.attach(phongLeakProgram);
+    camera.attach(phongClipProgram);
+    camera.attach(nightMatteProgram);
+    camera.attach(nightTreeProgram);
+
+    litPrograms = { constantProgram, lambertProgram, phongProgram, blinnProgram,
+        phongWrongNormalsProgram, phongLeakProgram, phongClipProgram, nightMatteProgram, nightTreeProgram };
 }
 
 namespace
@@ -267,7 +323,9 @@ namespace
         GROUND, POST,
         TREE_CONIFER_DARK, TREE_CONIFER_LIGHT, TREE_ROUND_MID, TREE_ROUND_LIGHT,
         BUSH_DARK, BUSH_LIGHT,
-        ROCKET, LIT_SPHERE, MERCURY, VENUS, MARS, JUPITER, LIGHT_MARKER
+        ROCKET, LIT_SPHERE, MERCURY, VENUS, MARS, JUPITER, LIGHT_MARKER,
+        NIGHT_GROUND, NIGHT_CONIFER_DARK, NIGHT_CONIFER_LIGHT, NIGHT_ROUND_MID, NIGHT_ROUND_LIGHT,
+        NIGHT_BUSH_DARK, NIGHT_BUSH_LIGHT, FIREFLY
     };
 }
 
@@ -300,6 +358,17 @@ void Application::createModels()
     models.push_back(createLitSphere(glm::vec3(0.80f, 0.30f, 0.15f)));  // MARS
     models.push_back(createLitSphere(glm::vec3(0.80f, 0.62f, 0.42f)));  // JUPITER
     models.push_back(createLitSphere(glm::vec3(1.00f, 0.95f, 0.60f)));  // LIGHT_MARKER
+
+    // Lit versions (with normals, pure material colors) of the forest models for the night scene.
+    // The order must match the ModelId enum.
+    models.push_back(makeLitModel([] { return proc::ground(8, 7); }));                                // NIGHT_GROUND
+    models.push_back(makeLitModel([] { return proc::conifer(glm::vec3(0.08f, 0.36f, 0.13f)); }));     // NIGHT_CONIFER_DARK
+    models.push_back(makeLitModel([] { return proc::conifer(glm::vec3(0.16f, 0.50f, 0.17f)); }));     // NIGHT_CONIFER_LIGHT
+    models.push_back(makeLitModel([] { return proc::broadleaf(glm::vec3(0.20f, 0.52f, 0.14f)); }));   // NIGHT_ROUND_MID
+    models.push_back(makeLitModel([] { return proc::broadleaf(glm::vec3(0.34f, 0.62f, 0.20f)); }));   // NIGHT_ROUND_LIGHT
+    models.push_back(makeLitModel([] { return proc::bush(glm::vec3(0.12f, 0.42f, 0.14f)); }));        // NIGHT_BUSH_DARK
+    models.push_back(makeLitModel([] { return proc::bush(glm::vec3(0.26f, 0.55f, 0.18f)); }));        // NIGHT_BUSH_LIGHT
+    models.push_back(createLitSphere(glm::vec3(1.00f, 1.00f, 0.55f)));                                // FIREFLY (glowing ball)
 }
 
 void Application::createScenes()
@@ -488,6 +557,120 @@ void Application::createScenes()
     clockScene->add(models[CLOCK], clockProgram, placeY(0, 0, 0, 0.9f, PI));
     clockScene->add(models[SIGNATURE], basicProgram, place(0.68f, -0.88f, -0.95f, 0.14f));
     scenes.push_back(clockScene);
+
+    // ---------------------------------------------------------------
+    // 1) Normal conversion: left WRONG (mat3(M) * n), right CORRECT (transpose(inverse(mat3(M))) * n).
+    //    Non-uniformly scaled ellipsoids: the wrong normal is not perpendicular to the surface,
+    //    so both the diffuse shading and the highlight are wrong.
+    // ---------------------------------------------------------------
+    Scene* normals = new Scene("Normaly: vlevo CHYBNE, vpravo SPRAVNE");
+    normals->setLight(glm::vec3(0.0f, 2.5f, 3.0f));
+    {
+        const glm::vec3 eye(0.0f, 0.0f, 7.0f);
+        normals->setCameraStart(eye, -PI / 2.0f, PI / 2.0f, 3.0f);
+    }
+    auto ellipsoid = [&](float x) {
+        return makeComposite({
+            std::make_shared<Translate>(glm::vec3(x, 0.0f, 0.0f)),
+            std::make_shared<Rotate>(0.6f, axisZ),
+            std::make_shared<Scale>(glm::vec3(1.6f, 0.5f, 0.8f))   // non-uniform scale
+            });
+        };
+    normals->add(models[LIT_SPHERE], phongWrongNormalsProgram, ellipsoid(-2.6f));   // wrong normals
+    normals->add(models[LIT_SPHERE], phongProgram, ellipsoid(2.6f));                // correct normals (lit.vert)
+    normals->add(models[LIGHT_MARKER], constantProgram, place(0.0f, 2.5f, 3.0f, 0.12f));
+    scenes.push_back(normals);
+
+    // ---------------------------------------------------------------
+    // 2) Far side of the ball, shininess = 1, light placed BEHIND the balls:
+    //    left WRONG (specular term also on the far side), right CORRECT (clipped by diff > 0)
+    // ---------------------------------------------------------------
+    Scene* backSide = new Scene("Odvracena strana: vlevo CHYBNE (presvit), vpravo SPRAVNE (orezano)");
+    backSide->setLight(glm::vec3(0.0f, 0.0f, -3.0f));
+    {
+        const glm::vec3 eye(0.0f, 0.0f, 7.0f);
+        backSide->setCameraStart(eye, -PI / 2.0f, PI / 2.0f, 3.0f);
+    }
+    backSide->add(models[LIT_SPHERE], phongLeakProgram, place(-1.6f, 0.0f, 0.0f, 1.0f));   // no clipping
+    backSide->add(models[LIT_SPHERE], phongClipProgram, place(1.6f, 0.0f, 0.0f, 1.0f));    // clipped
+    backSide->add(models[LIGHT_MARKER], constantProgram, place(0.0f, 0.0f, -3.0f, 0.12f));
+    scenes.push_back(backSide);
+
+    // ---------------------------------------------------------------
+    // 3) Night forest with ONE point light (firefly / lantern).
+    //    - the light is attenuated: 1 / (kc + kl * d + kq * d^2) -> only its close surroundings are lit,
+    //      the intensity keeps falling with the distance
+    //    - the rest of the forest stays almost dark (very weak ambient term Ia + distance fog)
+    //    - materials: matte ground and bushes (weak specular), trees slightly shinier
+    // ---------------------------------------------------------------
+    Scene* night = new Scene("Nocni les - svetluska");
+    night->setCameraStart(glm::vec3(0.0f, 1.7f, 14.0f), -PI / 2.0f, PI / 2.0f, 4.0f);
+    night->setFreeLook(true);
+    night->setClearColor(glm::vec3(0.004f, 0.006f, 0.012f));   // almost black night, same as the fog color
+
+    // the light hovers slowly above the ground in a small clearing in front of the camera
+    const glm::vec3 clearing(0.0f, 0.0f, 7.0f);
+    const auto fireflyPath = [clearing](float t) {
+        return clearing + glm::vec3(1.2f * std::sin(0.35f * t), 1.2f + 0.25f * std::sin(1.1f * t), 1.0f * std::cos(0.5f * t));
+        };
+    night->setLight(fireflyPath(0.0f), glm::vec3(1.0f, 0.85f, 0.45f) * 3.0f);   // warm yellow light (Id, Is)
+    night->setLightPath(fireflyPath);
+    // kc = 1, kl = 0.7, kq = 1.8: strong near the source, ~10 % at 2 m, ~3 % at 3 m, ~1 % at 7 m
+    night->setLightAttenuation(glm::vec3(1.0f, 0.7f, 1.8f));
+
+    night->add(models[NIGHT_GROUND], nightMatteProgram, makeComposite({ std::make_shared<Scale>(45.0f) }));
+
+    std::mt19937 nightRng(7);   // fixed seed -> the same forest every run
+    auto nightRandom = [&nightRng](float lo, float hi) {
+        return std::uniform_real_distribution<float>(lo, hi)(nightRng);
+        };
+    const ModelId nightTrees[] = { NIGHT_CONIFER_DARK, NIGHT_CONIFER_LIGHT, NIGHT_ROUND_MID, NIGHT_ROUND_LIGHT };
+    const ModelId nightBushes[] = { NIGHT_BUSH_DARK, NIGHT_BUSH_LIGHT };
+
+    // trees and bushes standing around the light - their trunks and the ground between them get lit by it
+    for (int i = 0; i < 8; ++i)
+    {
+        const float angle = 2.0f * PI * i / 8.0f + nightRandom(-0.2f, 0.2f);
+        const float radius = nightRandom(3.0f, 5.5f);
+        night->add(models[nightTrees[nightRng() % 4]], nightTreeProgram,
+            placeY(clearing.x + radius * std::cos(angle), 0.0f, clearing.z + radius * std::sin(angle),
+                nightRandom(1.2f, 2.0f), nightRandom(0.0f, 2.0f * PI)));
+    }
+    for (int i = 0; i < 6; ++i)
+    {
+        const float angle = 2.0f * PI * i / 6.0f + nightRandom(-0.3f, 0.3f);
+        const float radius = nightRandom(2.2f, 4.0f);
+        night->add(models[nightBushes[nightRng() % 2]], nightMatteProgram,
+            placeY(clearing.x + radius * std::cos(angle), 0.0f, clearing.z + radius * std::sin(angle),
+                nightRandom(0.7f, 1.3f), nightRandom(0.0f, 2.0f * PI)));
+    }
+
+    // the rest of the forest (dense, but almost invisible in the dark)
+    auto nightFreeSpot = [&](float x, float z) {
+        return glm::distance(glm::vec2(x, z), glm::vec2(clearing.x, clearing.z)) > 3.0f     // keep the clearing free
+            && glm::distance(glm::vec2(x, z), glm::vec2(0.0f, 14.0f)) > 2.5f;               // and the camera start
+        };
+    for (int i = 0; i < 140; ++i)
+    {
+        float x, z;
+        do { x = nightRandom(-22.0f, 22.0f); z = nightRandom(-22.0f, 22.0f); } while (!nightFreeSpot(x, z));
+        night->add(models[nightTrees[nightRng() % 4]], nightTreeProgram,
+            placeY(x, 0.0f, z, nightRandom(1.0f, 2.2f), nightRandom(0.0f, 2.0f * PI)));
+    }
+    for (int i = 0; i < 80; ++i)
+    {
+        float x, z;
+        do { x = nightRandom(-22.0f, 22.0f); z = nightRandom(-22.0f, 22.0f); } while (!nightFreeSpot(x, z));
+        night->add(models[nightBushes[nightRng() % 2]], nightMatteProgram,
+            placeY(x, 0.0f, z, nightRandom(0.7f, 1.7f), nightRandom(0.0f, 2.0f * PI)));
+    }
+
+    // the firefly itself - a small glowing ball (constant shader) following the same path as the light
+    night->add(models[FIREFLY], constantProgram, makeComposite({
+        std::make_shared<DynamicTranslate>(fireflyPath),
+        std::make_shared<Scale>(0.06f)
+        }));
+    scenes.push_back(night);
 }
 
 void Application::updateTitle()
@@ -496,6 +679,8 @@ void Application::updateTitle()
     if (activeScene == 0)
         title += translateFirst ? " | poradi: posun, rotace (T*R)"
         : " | poradi: rotace, posun (R*T)";
+    // show the current resize mode (toggled with the R key)
+    title += resizeCorrect ? " | okno: spravne (R)" : " | okno: CHYBNE (R)";
     glfwSetWindowTitle(window, title.c_str());
 }
 
@@ -517,14 +702,17 @@ void Application::updateClock()
     clockProgram->setUniform("clockSeconds", seconds);
 }
 
-void Application::applyLight(const Scene& scene)
+// Sends the scene light (position, color, attenuation) to every program that uses lighting.
+// Called every frame because the light can move (firefly).
+void Application::applyLight(const Scene& scene, float time)
 {
-    ShaderProgram* lit[] = { constantProgram, lambertProgram, phongProgram, blinnProgram };
-    for (ShaderProgram* program : lit)
+    for (ShaderProgram* program : litPrograms)
     {
         program->use();
-        if (program->hasUniform("lightPosition")) program->setUniform("lightPosition", scene.getLightPosition());
+        // not every lit shader has every uniform (e.g. attenuation exists only in night.frag)
+        if (program->hasUniform("lightPosition")) program->setUniform("lightPosition", scene.getLightPosition(time));
         if (program->hasUniform("lightColor")) program->setUniform("lightColor", scene.getLightColor());
+        if (program->hasUniform("lightAttenuation")) program->setUniform("lightAttenuation", scene.getLightAttenuation());
     }
 }
 
@@ -536,7 +724,7 @@ void Application::setScene(int index)
         const Scene* scene = scenes[activeScene];
         camera.setPose(scene->getCameraEye(), scene->getCameraFi(), scene->getCameraAlpha());
         moveSpeed = scene->getMoveSpeed();
-        applyLight(*scene);
+        applyLight(*scene, static_cast<float>(glfwGetTime()));
         glfwSetInputMode(window, GLFW_CURSOR, scene->isFreeLook() ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
         firstMouse = true;
         lookActive = false;
@@ -552,10 +740,12 @@ void Application::processInput()
         glfwSetWindowShouldClose(window, GLFW_TRUE);
 
     const int sceneCount = static_cast<int>(scenes.size());
-    static bool previous[9] = {};
-    for (int i = 0; i < sceneCount && i < 9; ++i)
+    static bool previous[10] = {};
+    for (int i = 0; i < sceneCount && i < 10; ++i)
     {
-        bool pressed = glfwGetKey(window, GLFW_KEY_1 + i) == GLFW_PRESS;
+        // scenes 1-9 are on keys 1-9, scene 10 is on key 0
+        const int key = (i < 9) ? GLFW_KEY_1 + i : GLFW_KEY_0;
+        bool pressed = glfwGetKey(window, key) == GLFW_PRESS;
         if (pressed && !previous[i]) setScene(i);
         previous[i] = pressed;
     }
@@ -570,6 +760,20 @@ void Application::processInput()
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) right += step;
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) right -= step;
     if (forward != 0.0f || right != 0.0f) camera.move(forward, right);
+
+    // R: toggle between correct and wrong viewport / projection update on window resize
+    static bool resizeKeyPrevious = false;
+    const bool resizeKey = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
+    if (resizeKey && !resizeKeyPrevious)
+    {
+        resizeCorrect = !resizeCorrect;
+        std::cout << (resizeCorrect ? "Zmena velikosti okna: SPRAVNE (viewport + perspektiva)"
+            : "Zmena velikosti okna: CHYBNE (jen viewport, perspektiva se neaktualizuje)") << std::endl;
+        // when switching back to the correct mode, apply the current window size immediately
+        if (resizeCorrect) onFramebufferResized(framebufferWidth, framebufferHeight);
+        updateTitle();
+    }
+    resizeKeyPrevious = resizeKey;
 
     static bool spacePrevious = false;
     bool space = glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS;
@@ -593,12 +797,18 @@ void Application::run()
     {
         processInput();
 
-        glClearColor(0.035f, 0.045f, 0.08f, 1.0f);
+        // every scene can have its own background color (the night forest is almost black)
+        const glm::vec3 clearColor = scenes.empty() ? glm::vec3(0.035f, 0.045f, 0.08f) : scenes[activeScene]->getClearColor();
+        glClearColor(clearColor.r, clearColor.g, clearColor.b, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         updateClock();
         if (!scenes.empty())
-            scenes[activeScene]->draw(static_cast<float>(glfwGetTime()));
+        {
+            const float time = static_cast<float>(glfwGetTime());
+            applyLight(*scenes[activeScene], time);    // the light can move (firefly), so update it every frame
+            scenes[activeScene]->draw(time);
+        }
 
         glfwSwapBuffers(window);
         glfwPollEvents();
